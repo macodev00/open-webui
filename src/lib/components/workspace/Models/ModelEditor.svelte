@@ -94,6 +94,13 @@
 		}
 	};
 
+	$: hasCustomProfileImage = Boolean(
+		info?.meta?.profile_image_url &&
+		![`${WEBUI_BASE_URL}/static/favicon.png`, '/static/favicon.png'].includes(
+			info.meta.profile_image_url
+		)
+	);
+
 	let params = {
 		system: ''
 	};
@@ -659,6 +666,18 @@
 											class="absolute inset-0 bg-white opacity-0 transition group-hover:opacity-20 dark:bg-black"
 										></div>
 									</button>
+
+									{#if hasCustomProfileImage}
+										<button
+											class="shrink-0 text-xs text-gray-500 transition hover:text-gray-700 dark:hover:text-gray-300"
+											type="button"
+											on:click={() => {
+												info.meta.profile_image_url = `${WEBUI_BASE_URL}/static/favicon.png`;
+											}}
+										>
+											{$i18n.t('Reset')}
+										</button>
+									{/if}
 
 									<div class="min-w-0 flex-1">
 										<div class="flex min-w-0 items-center gap-2">
