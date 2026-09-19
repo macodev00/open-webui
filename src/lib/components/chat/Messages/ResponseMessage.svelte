@@ -15,6 +15,7 @@
 	import { createNewFeedback, getFeedbackById, updateFeedbackById } from '$lib/apis/evaluations';
 	import { getChatById } from '$lib/apis/chats';
 	import { generateTags } from '$lib/apis';
+	import { persistRatingFeedback } from '$lib/utils/rating-feedback';
 
 	import {
 		audioQueue,
@@ -517,23 +518,19 @@
 		}, {});
 		feedbackItem.meta.base_models = baseModels;
 
-		let feedback = null;
-		if (message?.feedbackId) {
-			feedback = await updateFeedbackById(
-				localStorage.token,
-				message.feedbackId,
-				feedbackItem
-			).catch((error) => {
-				toast.error(`${error}`);
-			});
+		const persisted = await persistRatingFeedback({
+			existingId: message?.feedbackId,
+			updateById: (id) => updateFeedbackById(localStorage.token, id, feedbackItem),
+			create: () => createNewFeedback(localStorage.token, feedbackItem)
+		});
+		if (persisted.feedbackId) {
+			updatedMessage.feedbackId = persisted.feedbackId;
 		} else {
-			feedback = await createNewFeedback(localStorage.token, feedbackItem).catch((error) => {
-				toast.error(`${error}`);
-			});
-
-			if (feedback) {
-				updatedMessage.feedbackId = feedback.id;
-			}
+			delete updatedMessage.feedbackId;
+		}
+		if (persisted.error) {
+			console.error(persisted.error);
+			toast.error(`${persisted.error}`);
 		}
 
 		console.log(updatedMessage);
@@ -559,13 +556,15 @@
 					feedbackItem.data.tags = tags;
 
 					saveMessage(message.id, updatedMessage);
-					await updateFeedbackById(
-						localStorage.token,
-						updatedMessage.feedbackId,
-						feedbackItem
-					).catch((error) => {
-						toast.error(`${error}`);
-					});
+					if (updatedMessage.feedbackId) {
+						await updateFeedbackById(
+							localStorage.token,
+							updatedMessage.feedbackId,
+							feedbackItem
+						).catch((error) => {
+							toast.error(`${error}`);
+						});
+					}
 				}
 			}
 		}
