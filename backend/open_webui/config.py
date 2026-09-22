@@ -36,6 +36,7 @@ from open_webui.env import (
     log,
 )
 from open_webui.models.config import Config
+from open_webui.static_sync import sync_frontend_static
 from open_webui.utils.json_codec import JSONCodec
 
 
@@ -96,26 +97,7 @@ async def import_legacy_config_json():
 ####################################
 
 STATIC_DIR = Path(os.getenv('STATIC_DIR', OPEN_WEBUI_DIR / 'static')).resolve()
-
-try:
-    if STATIC_DIR.exists():
-        for item in STATIC_DIR.iterdir():
-            if item.is_file() or item.is_symlink():
-                try:
-                    item.unlink()
-                except Exception as e:
-                    pass
-except Exception as e:
-    pass
-
-for file_path in (FRONTEND_BUILD_DIR / 'static').glob('**/*'):
-    if file_path.is_file():
-        target_path = STATIC_DIR / file_path.relative_to((FRONTEND_BUILD_DIR / 'static'))
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            shutil.copyfile(file_path, target_path)
-        except Exception as e:
-            logging.error(f'An error occurred: {e}')
+sync_frontend_static(STATIC_DIR, FRONTEND_BUILD_DIR)
 
 # LICENSE covers copied Open WebUI logo/favicon assets.
 # Do not alter, remove, obscure, or replace them except as LICENSE permits:
@@ -1675,43 +1657,13 @@ DEFAULT_MODELS = os.getenv('DEFAULT_MODELS', None)
 
 DEFAULT_PINNED_MODELS = os.getenv('DEFAULT_PINNED_MODELS', None)
 
+# None uses the frontend's localized defaults; an empty list disables suggestions.
 try:
-    default_prompt_suggestions = JSONCodec.loads(os.getenv('DEFAULT_PROMPT_SUGGESTIONS', '[]'))
+    DEFAULT_PROMPT_SUGGESTIONS = JSONCodec.loads(os.getenv('DEFAULT_PROMPT_SUGGESTIONS', 'null'))
 except Exception as e:
     log.exception(f'Error loading DEFAULT_PROMPT_SUGGESTIONS: {e}')
-    default_prompt_suggestions = []
-if default_prompt_suggestions == []:
-    default_prompt_suggestions = [
-        {
-            'title': ['Help me study', 'vocabulary for a college entrance exam'],
-            'content': "Help me study vocabulary: write a sentence for me to fill in the blank, and I'll try to pick the correct option.",
-        },
-        {
-            'title': ['Give me ideas', "for what to do with my kids' art"],
-            'content': "What are 5 creative things I could do with my kids' art? I don't want to throw them away, but it's also so much clutter.",
-        },
-        {
-            'title': ['Tell me a fun fact', 'about the Roman Empire'],
-            'content': 'Tell me a random fun fact about the Roman Empire',
-        },
-        {
-            'title': ['Show me a code snippet', "of a website's sticky header"],
-            'content': "Show me a code snippet of a website's sticky header in CSS and JavaScript.",
-        },
-        {
-            'title': [
-                'Explain options trading',
-                "if I'm familiar with buying and selling stocks",
-            ],
-            'content': "Explain options trading in simple terms if I'm familiar with buying and selling stocks.",
-        },
-        {
-            'title': ['Overcome procrastination', 'give me tips'],
-            'content': 'Could you start by asking me about instances when I procrastinate the most and then give me some suggestions to overcome it?',
-        },
-    ]
+    DEFAULT_PROMPT_SUGGESTIONS = None
 
-DEFAULT_PROMPT_SUGGESTIONS = default_prompt_suggestions
 DEFAULT_PROMPT_SUGGESTIONS_I18N = {}
 
 try:

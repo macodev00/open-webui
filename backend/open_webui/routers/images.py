@@ -667,7 +667,9 @@ async def image_generations(
                 if image_url := image.get('url', None):
                     image_data, content_type = await get_image_data(
                         image_url,
-                        {k: v for k, v in headers.items() if k != 'Content-Type'},
+                        {k: v for k, v in headers.items() if k != 'Content-Type'}
+                        if _is_same_origin(image_url, image_config.IMAGES_OPENAI_API_BASE_URL)
+                        else None,
                     )
                 else:
                     image_data, content_type = await get_image_data(image['b64_json'])
@@ -918,11 +920,8 @@ async def image_edits(
 
             if data.startswith('http://') or data.startswith('https://'):
                 parsed = urlparse(data)
-                if (
-                    parsed.netloc == urlparse(str(request.base_url)).netloc
-                    and parsed.path.startswith('/api/v1/files/')
-                    and '/content' in parsed.path
-                ):
+                # Fetching /api/v1/files/{id}/content over the network would be unauthenticated.
+                if parsed.path.startswith('/api/v1/files/') and '/content' in parsed.path:
                     return await load_url_image(parsed.path)
 
                 # Validate URL to prevent SSRF attacks against local/private networks.
@@ -1046,7 +1045,9 @@ async def image_edits(
                 if image_url := image.get('url', None):
                     image_data, content_type = await get_image_data(
                         image_url,
-                        {k: v for k, v in headers.items() if k != 'Content-Type'},
+                        {k: v for k, v in headers.items() if k != 'Content-Type'}
+                        if _is_same_origin(image_url, image_config.IMAGES_EDIT_OPENAI_API_BASE_URL)
+                        else None,
                     )
                 else:
                     image_data, content_type = await get_image_data(image['b64_json'])
