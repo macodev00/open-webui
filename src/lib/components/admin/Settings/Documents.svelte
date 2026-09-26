@@ -169,10 +169,7 @@
 			toast.error($i18n.t('External Document Loader URL required.'));
 			return;
 		}
-		if (
-			RAGConfig.CONTENT_EXTRACTION_ENGINE === 'external' &&
-			RAGConfig.EXTERNAL_DOCUMENT_LOADER_HEADERS
-		) {
+		if (RAGConfig.EXTERNAL_DOCUMENT_LOADER_HEADERS) {
 			try {
 				const headers = JSON.parse(RAGConfig.EXTERNAL_DOCUMENT_LOADER_HEADERS);
 				if (headers === null || typeof headers !== 'object' || Array.isArray(headers)) {
@@ -859,6 +856,7 @@
 						<SensitiveInput
 							variant="settings"
 							placeholder={$i18n.t('Enter MinerU API Key')}
+							required={false}
 							bind:value={RAGConfig.MINERU_API_KEY}
 						/>
 					</AdminSettingField>

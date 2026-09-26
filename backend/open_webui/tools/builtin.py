@@ -3484,6 +3484,7 @@ async def view_skill(
     __request__: Request = None,
     __user__: dict = None,
     __metadata__: dict = None,
+    __event_call__: callable = None,
 ) -> str:
     """
     Load the full instructions of a skill by its id from the available skills manifest.
@@ -3504,7 +3505,9 @@ async def view_skill(
             from open_webui.utils.terminals import get_terminal_skill
 
             skill_name = unquote(id.removeprefix(terminal_skill_prefix))
-            skill = await get_terminal_skill(__request__, __user__, __metadata__ or {}, skill_name)
+            skill = await get_terminal_skill(
+                __request__, __user__, __metadata__ or {}, skill_name, {'__event_call__': __event_call__}
+            )
             if not skill:
                 return JSONCodec.dumps({'error': f"Skill '{id}' not found"})
             return JSONCodec.dumps(skill, ensure_ascii=False)
@@ -3768,7 +3771,7 @@ async def create_automation(
 
         # Validate the RRULE
         try:
-            validate_rrule(rrule, tz=user.timezone)
+            await validate_rrule(rrule, tz=user.timezone)
         except ValueError as e:
             return JSONCodec.dumps({'error': f'Invalid schedule: {e}'})
 
@@ -3794,7 +3797,7 @@ async def create_automation(
             is_active=True,
         )
 
-        automation = await Automations.insert(user_id, form, next_run_ns(rrule, tz=tz))
+        automation = await Automations.insert(user_id, form, await next_run_ns(rrule, tz=tz))
 
         return JSONCodec.dumps(
             {
@@ -3805,7 +3808,7 @@ async def create_automation(
                 'model_id': model_id,
                 'target': automation.data.get('target'),
                 'is_active': automation.is_active,
-                'next_runs': next_n_runs_ns(rrule, tz=tz),
+                'next_runs': await next_n_runs_ns(rrule, tz=tz),
             },
             ensure_ascii=False,
         )
@@ -3876,7 +3879,7 @@ async def update_automation(
         # Validate RRULE if changed
         if rrule is not None:
             try:
-                validate_rrule(new_rrule, tz=user.timezone)
+                await validate_rrule(new_rrule, tz=user.timezone)
             except ValueError as e:
                 return JSONCodec.dumps({'error': f'Invalid schedule: {e}'})
 
@@ -3898,7 +3901,7 @@ async def update_automation(
             is_active=automation.is_active,
         )
 
-        updated = await Automations.update_by_id(automation_id, form, next_run_ns(new_rrule, tz=tz))
+        updated = await Automations.update_by_id(automation_id, form, await next_run_ns(new_rrule, tz=tz))
 
         return JSONCodec.dumps(
             {
@@ -3909,7 +3912,7 @@ async def update_automation(
                 'model_id': new_model_id,
                 'target': updated.data.get('target'),
                 'is_active': updated.is_active,
-                'next_runs': next_n_runs_ns(new_rrule, tz=tz),
+                'next_runs': await next_n_runs_ns(new_rrule, tz=tz),
             },
             ensure_ascii=False,
         )
@@ -3977,7 +3980,7 @@ async def list_automations(
                     'rrule': rrule,
                     'is_active': item.is_active,
                     'last_run_at': item.last_run_at,
-                    'next_runs': next_n_runs_ns(rrule, tz=user.timezone if user else None),
+                    'next_runs': await next_n_runs_ns(rrule, tz=user.timezone if user else None),
                 }
             )
 
@@ -4024,7 +4027,7 @@ async def toggle_automation(
         rrule = automation.data.get('rrule', '')
         toggled = await Automations.toggle(
             automation_id,
-            next_run_ns(rrule, tz=user.timezone if user else None),
+            await next_run_ns(rrule, tz=user.timezone if user else None),
         )
 
         return JSONCodec.dumps(

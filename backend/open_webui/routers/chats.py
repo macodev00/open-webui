@@ -716,8 +716,10 @@ async def delete_all_user_chats(
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
 
+    tag_ids = [tag.id for tag in await Tags.get_tags_by_user_id(user.id, db=db)]
     result = await Chats.delete_chats_by_user_id(user.id, db=db)
     if result:
+        await Chats.delete_orphan_tags_for_user(tag_ids, user.id, db=db)
         await publish_event(
             request,
             EVENTS.CHAT_DELETED_ALL,
@@ -1129,8 +1131,14 @@ async def archive_all_chats(
 async def unarchive_all_chats(
     request: Request, user=Depends(get_verified_user), db: AsyncSession = Depends(get_async_session)
 ):
+    tag_ids = {
+        tag_id
+        for chat in await Chats.get_archived_chats_by_user_id(user.id, db=db)
+        for tag_id in chat.meta.get('tags', [])
+    }
     result = await Chats.unarchive_all_chats_by_user_id(user.id, db=db)
     if result:
+        await Tags.ensure_tags_exist(list(tag_ids), user.id, db=db)
         await publish_event(request, EVENTS.CHAT_UNARCHIVED, actor=user, subject_id=user.id, subject_type='user')
     return result
 
@@ -1840,18 +1848,6 @@ async def clone_shared_chat_by_id(
 ):
     await require_chat_import_permission(request, user, db)
 
-    chat = await Chats.get_chat_by_share_id(id, db=db)
-
-    # Fallback: admins can also access any chat directly by chat ID
-    if not chat and user.role == 'admin' and ENABLE_ADMIN_CHAT_ACCESS:
-        chat = await Chats.get_chat_by_id(id, db=db)
-
-    if not chat:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ERROR_MESSAGES.NOT_FOUND,
-        )
-
     # Enforce access grants (owner and admins bypass)
     shared = await SharedChats.get_by_id(id, db=db)
     if shared and user.role != 'admin' and shared.user_id != user.id:
@@ -1867,6 +1863,18 @@ async def clone_shared_chat_by_id(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
             )
+
+    chat = await Chats.get_chat_by_share_id(id, db=db) if shared else None
+
+    # Fallback: admins can also access any chat directly by chat ID
+    if not chat and user.role == 'admin' and ENABLE_ADMIN_CHAT_ACCESS:
+        chat = await Chats.get_chat_by_id(id, db=db)
+
+    if not chat:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ERROR_MESSAGES.NOT_FOUND,
+        )
 
     updated_chat = {
         **chat.chat,
