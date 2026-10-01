@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import time
+import weakref
 from datetime import timedelta
 from uuid import uuid4
 
@@ -41,7 +42,7 @@ MUTATING_MEMORY_TOOLS = {
 _background_active: set[str] = set()
 _background_lock = asyncio.Lock()
 _foreground_semaphore: asyncio.Semaphore | None = None
-_parent_locks: dict[str, asyncio.Lock] = {}
+_parent_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
 
 
 def _build_request(source: Request, user_id: str, *, internal: bool) -> Request:
@@ -219,6 +220,7 @@ async def process_pending_internal_messages(
             history['messages'] = messages
             history['currentId'] = assistant_message_id
             chat.chat = {**(chat.chat or {}), 'history': history}
+            chat.current_message_id = assistant_message_id
             chat.updated_at = int(time.time())
             await db.commit()
 
@@ -314,6 +316,7 @@ async def delegate(
         and await Config.get('code_interpreter.engine', 'pyodide') != 'jupyter'
     ):
         features.pop('code_interpreter')
+    folder_id = await Chats.get_chat_folder_id(parent_chat_id, user_data['id']) or metadata.get('folder_id')
     run = {
         'model_id': metadata.get('model_id') or (metadata.get('model') or {}).get('id'),
         'session_id': metadata.get('session_id'),
@@ -327,6 +330,7 @@ async def delegate(
         'files': copy.deepcopy(metadata.get('files') or []),
         'variables': copy.deepcopy(metadata.get('variables') or {}),
         'direct': bool(metadata.get('direct')),
+        'folder_id': folder_id,
     }
     if not run.get('model_id'):
         return 'Error: model context is required.'
@@ -479,6 +483,7 @@ async def delegate(
                 'features': run.get('features') or {},
                 'files': run.get('files') or [],
                 'variables': run.get('variables') or {},
+                'folder_id': run.get('folder_id'),
             }
             if run.get('terminal_id'):
                 form_data['terminal_id'] = run['terminal_id']
@@ -614,10 +619,16 @@ async def delegate(
                 updated_chat = copy.deepcopy(parent.chat or {})
                 updated_history = updated_chat.setdefault('history', {})
                 updated_messages = updated_history.setdefault('messages', {})
+                parent_message = updated_messages.get(parent_message_id)
                 done_assistants = [
                     message
-                    for message in updated_messages.values()
-                    if message.get('role') == 'assistant' and message.get('done') is not False
+                    for message_id, message in updated_messages.items()
+                    if message.get('role') == 'assistant'
+                    and message.get('done') is not False
+                    and (
+                        parent_message is None
+                        or any(entry is parent_message for entry in get_message_list(updated_messages, message_id))
+                    )
                 ]
                 result_parent_id = (
                     max(done_assistants, key=lambda message: message.get('timestamp', 0)).get('id')
