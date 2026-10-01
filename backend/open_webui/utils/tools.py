@@ -271,9 +271,7 @@ async def get_tools(request: Request, tool_ids: list[str], user: UserModel, extr
         return {}
 
     enabled_ids = [
-        tool_id
-        for tool_id in tool_ids
-        if (ENABLE_TOOL_SERVERS if tool_id.startswith('server:') else ENABLE_TOOLS)
+        tool_id for tool_id in tool_ids if (ENABLE_TOOL_SERVERS if tool_id.startswith('server:') else ENABLE_TOOLS)
     ]
     if len(enabled_ids) != len(tool_ids):
         log.debug('Excluded tools disabled by plugin configuration')
